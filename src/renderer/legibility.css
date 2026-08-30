@@ -18,3 +18,11 @@
 .setup-steps small,.setup-steps button,.onboarding-import small,.onboarding-providers small{font-size:calc(8px * var(--ui-scale))}
 .troubleshooting strong,.onboarding-success,.onboarding-skip{font-size:calc(9px * var(--ui-scale))}
 .onboarding-config-options{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:25px}.onboarding-config-options .onboarding-import{height:100%;margin-top:0}.onboarding-config-options .onboarding-import:hover{background:var(--hover)}@media(max-width:700px){.onboarding-config-options{grid-template-columns:1fr}}
+
+/* Keep the persistent Settings actions compact. */
+.settings-page-backdrop .settings-modal>footer .secondary-button,.settings-page-backdrop .settings-modal>footer .connect-button{height:30px;min-height:30px;padding:0 11px;border-radius:6px;font-size:12px;line-height:1}
+.settings-page-backdrop .settings-modal>footer{gap:6px;padding-top:12px;padding-bottom:14px}
+
+/* Theme controls stay compact even when the general interface scale is large. */
+.settings-page-backdrop .theme-account-select select,.settings-page-backdrop .avatar-style select{font-size:11px}
+.settings-page-backdrop .theme-presets button,.settings-page-backdrop .theme-mode-toggle button{font-size:11px}

@@ -1,28 +1,71 @@
 # SABLE
 
-SABLE is a private, local-first Windows email client built with Electron, React, and TypeScript.
+SABLE is a minimalist, local-first Windows email application that brings Gmail and Outlook accounts into one private, unified inbox.
 
-## Features
+## Download for Windows
 
-- Secure Electron renderer boundary (sandbox, context isolation, no Node integration)
-- Responsive three-column unified inbox and individual account views
-- Gmail and Outlook accounts with a unified, local-first mailbox
-- Threaded reading, attachments, search, starring, composer, archive/trash navigation
-- First-run OAuth setup guide and Google Desktop OAuth JSON importing
-- Light/dark themes, account palettes, imported fonts and adaptive type sizing
-- Keyboard access: `Ctrl+K` focuses search, `C` opens compose, and `Esc` closes overlays
-- Windows NSIS packaging configuration
+**[Download the latest SABLE installer](https://github.com/JazzApple1701/SABLE/releases/latest)**
 
-## Run locally
+Open the release page, download `SABLE-2.1.1-Windows-Setup.exe`, and run it. Normal users do **not** need Node.js, a cloud database, or paid hosting.
 
-Install Node.js 22 LTS, then:
+> Windows may show an “Unknown publisher” warning because this personal open-source build is not yet code-signed. Confirm that the download came from this repository before continuing.
+
+## What SABLE does
+
+- Combines multiple Gmail and Outlook accounts in one inbox
+- Keeps account indicators and separate account mailboxes
+- Reads complete conversations with threaded replies
+- Composes, replies to, and forwards email with attachments
+- Archives, deletes, stars, and changes read status
+- Searches mail and synchronizes inboxes in the background
+- Displays HTML email, remote images, and attachment quick previews
+- Supports light/dark mode, account colours, custom fonts, and adjustable text sizes
+- Stores mail, settings, and protected OAuth tokens locally on Windows
+
+## First-time setup
+
+Launch SABLE and follow the introductory guide.
+
+### Connect Gmail
+
+Google requires each open-source desktop user to provide their own Desktop OAuth configuration:
+
+1. Create a project in [Google Cloud Console](https://console.cloud.google.com/).
+2. Enable the **Gmail API**.
+3. Configure the OAuth consent screen. While it is in Testing mode, add your Gmail address as a test user.
+4. Create an OAuth client with application type **Desktop app**.
+5. In SABLE, choose either:
+   - **Import JSON file** — download and select Google’s `client_secret_….json` file.
+   - **Enter credentials manually** — paste the Desktop client ID and client secret.
+6. Select **Connect Gmail** and choose your account on Google’s official authorization page.
+
+SABLE requests `openid`, `email`, `profile`, and `gmail.modify`. It never asks for or stores your Gmail password.
+
+### Connect Outlook
+
+Open **Settings → Accounts → Add Outlook account** and follow Microsoft’s official authorization flow. If prompted, provide the public desktop application ID created in Microsoft Entra. Desktop applications do not require a Microsoft client secret.
+
+## Privacy and local storage
+
+- OAuth tokens and the Google Desktop client secret are encrypted with Electron `safeStorage`, backed by Windows DPAPI.
+- Cached mail, settings, imported fonts, and account preferences remain inside SABLE’s Windows application-data directory.
+- OAuth JSON files, tokens, settings, mail databases, logs, dependencies, and packaged builds are excluded from Git.
+- Disconnecting an account removes its locally stored authorization and cached data from SABLE.
+
+See [SECURITY.md](SECURITY.md) for security reporting and implementation details.
+
+## Building and contributing
+
+This section is for developers only. Installing the released application does not require these tools.
+
+Requirements: Node.js 22 LTS, npm, and Windows.
 
 ```powershell
 npm install
 npm run dev
 ```
 
-Verification and packaging commands:
+Run checks and build the Windows installer:
 
 ```powershell
 npm test
@@ -30,29 +73,6 @@ npm run build
 npm run package:win
 ```
 
-The installer will be written to `release/` after the integration milestones are complete. A real Node.js installation is recommended for normal development; the initial scaffold was verified with Codex's temporary bundled runtime because Node was not present on this machine's PATH.
+The installer is written to `release/`. Read [CONTRIBUTING.md](CONTRIBUTING.md) before proposing changes.
 
-## Security architecture
-
-OAuth authorization and API calls will live in Electron's main process, behind a narrow typed preload API. Authorization will use the system browser and PKCE; Postbird will never collect account passwords. Refresh tokens will be encrypted through Windows DPAPI-backed secure credential storage, while settings and a searchable mail cache remain in a local SQLite database. The renderer receives only the mail data and commands it needs.
-
-## Connect Gmail
-
-The Gmail integration is ready for a public desktop client ID:
-
-1. In Google Cloud Console, create or select a project and enable the **Gmail API**.
-2. Configure the OAuth consent screen. While the app is in Testing mode, add your own Google addresses as test users.
-3. Create an OAuth client with application type **Desktop app**.
-4. Download the client JSON.
-5. Open **Settings → Accounts → Setup guide** in SABLE and import that JSON.
-6. Continue in Google's official system-browser authorization page.
-
-Google includes a client secret in Desktop app JSON files, although installed applications cannot treat it as a confidential secret. SABLE encrypts it locally using Electron `safeStorage`, backed by Windows DPAPI. OAuth tokens receive the same protection. Never commit the downloaded JSON, local settings, token vault, or mail database.
-
-SABLE requests `openid`, `email`, `profile`, and `https://www.googleapis.com/auth/gmail.modify`. It supports mailbox reading, sending, archive, trash, read state, thread retrieval, profile display, and attachment downloads while intentionally excluding immediate permanent deletion.
-
-## Private files
-
-Runtime credentials, OAuth tokens, imported fonts, settings, and cached mail live under Electron's Windows user-data directory and are not part of this repository. The `.gitignore` explicitly excludes common OAuth JSON, token, settings, and mail-database names.
-
-See [SECURITY.md](SECURITY.md) before reporting a vulnerability and [CONTRIBUTING.md](CONTRIBUTING.md) before submitting changes.
+SABLE is built with Electron, React, TypeScript, Gmail API, Microsoft Graph, SQLite, and Windows secure credential storage.

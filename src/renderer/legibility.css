@@ -1,0 +1,20 @@
+/* Larger type for settings and the first-run setup screens. */
+.settings-modal h2{font-size:calc(14px * var(--ui-scale))}
+.settings-modal header p,.settings-section-title span{font-size:calc(9px * var(--ui-scale))}
+.settings-section-title strong{font-size:calc(11px * var(--ui-scale))}
+.settings-account strong{font-size:calc(10px * var(--ui-scale))}
+.settings-account small,.settings-no-accounts,.provider-connect small,.setup-guide-button small,.oauth-json-import small{font-size:calc(8px * var(--ui-scale))}
+.provider-connect strong,.setup-guide-button strong,.oauth-json-import strong{font-size:calc(9px * var(--ui-scale))}
+.font-selectors label>span,.font-import-button strong,.font-size-selectors label>span{font-size:calc(9px * var(--ui-scale))}
+.font-selectors select,.font-size-selectors select{font-size:calc(10px * var(--ui-scale))}
+.font-selectors small,.font-import-button small,.font-size-selectors small{font-size:calc(8px * var(--ui-scale))}
+.onboarding-shell li{font-size:calc(10px * var(--ui-scale))}
+.onboarding-shell li i,.onboarding-shell>aside>small{font-size:calc(8px * var(--ui-scale))}
+.eyebrow{font-size:calc(9px * var(--ui-scale))}
+.onboarding-shell section>p:not(.eyebrow):not(.connect-error):not(.onboarding-success){font-size:calc(12px * var(--ui-scale))}
+.onboarding-cards strong,.onboarding-import strong,.onboarding-providers strong{font-size:calc(11px * var(--ui-scale))}
+.onboarding-cards span,.troubleshooting p{font-size:calc(9px * var(--ui-scale))}
+.setup-steps strong{font-size:calc(10px * var(--ui-scale))}
+.setup-steps small,.setup-steps button,.onboarding-import small,.onboarding-providers small{font-size:calc(8px * var(--ui-scale))}
+.troubleshooting strong,.onboarding-success,.onboarding-skip{font-size:calc(9px * var(--ui-scale))}
+.onboarding-config-options{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:25px}.onboarding-config-options .onboarding-import{height:100%;margin-top:0}.onboarding-config-options .onboarding-import:hover{background:var(--hover)}@media(max-width:700px){.onboarding-config-options{grid-template-columns:1fr}}

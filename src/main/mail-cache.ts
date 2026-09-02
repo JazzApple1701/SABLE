@@ -1,7 +1,7 @@
 import Database from 'better-sqlite3'
 import { app } from 'electron'
 import { join } from 'node:path'
-import type { AccountTheme, GmailInboxPage, GmailMailbox, MailMessage } from '../shared/models'
+import type { AccountTheme, ContactProfile, GmailInboxPage, GmailMailbox, MailMessage } from '../shared/models'
 import type { ComposeDraft } from '../shared/models'
 
 interface MessageRow { payload: string }
@@ -9,6 +9,7 @@ interface CursorRow { page_token: string | null }
 interface HistoryRow { history_id: string | null }
 interface ThemeRow { account_id: string; light_json: string; dark_json: string; preset: string | null; avatar_style: AccountTheme['avatarStyle'] | null }
 interface AccountProfileRow { profile_json: string | null; mime_type: string | null; data: Buffer | null }
+interface ContactRow { name: string; email: string; mime_type: string | null; avatar_data: Buffer | null }
 
 export class MailCache {
   private database: Database.Database
@@ -124,6 +125,19 @@ export class MailCache {
 
   saveCustomAvatar(accountId: string, email: string, mimeType: string, data: Buffer): void { this.database.prepare(`INSERT INTO avatars (account_id, identity, mime_type, data, updated_at) VALUES (?, ?, ?, ?, unixepoch()) ON CONFLICT(account_id,identity) DO UPDATE SET mime_type=excluded.mime_type, data=excluded.data, updated_at=excluded.updated_at`).run(accountId, email.toLowerCase(), mimeType, data) }
 
+  saveContacts(accountId: string, contacts: Array<ContactProfile & { avatar?: { mimeType: string; data: Buffer } }>): void {
+    const save = this.database.transaction(() => {
+      this.database.prepare('DELETE FROM contacts WHERE account_id = ?').run(accountId)
+      const insert = this.database.prepare('INSERT INTO contacts (account_id, email, name, mime_type, avatar_data, updated_at) VALUES (?, ?, ?, ?, ?, unixepoch())')
+      for (const contact of contacts) insert.run(accountId, contact.email.toLowerCase(), contact.name, contact.avatar?.mimeType ?? null, contact.avatar?.data ?? null)
+    })
+    save()
+  }
+
+  loadContacts(accountId: string): ContactProfile[] {
+    return (this.database.prepare('SELECT name, email, mime_type, avatar_data FROM contacts WHERE account_id = ? ORDER BY name COLLATE NOCASE').all(accountId) as ContactRow[]).map(row => ({ name: row.name, email: row.email, avatarDataUrl: row.mime_type && row.avatar_data ? `data:${row.mime_type};base64,${row.avatar_data.toString('base64')}` : undefined }))
+  }
+
   close(): void { this.database.close() }
 
   private migrate(): void {
@@ -139,6 +153,7 @@ export class MailCache {
       CREATE TABLE IF NOT EXISTS labels (account_id TEXT NOT NULL, id TEXT NOT NULL, name TEXT NOT NULL, type TEXT, PRIMARY KEY(account_id,id));
       CREATE TABLE IF NOT EXISTS sync_cursors (account_id TEXT NOT NULL, mailbox TEXT NOT NULL, history_id TEXT, page_token TEXT, synced_at INTEGER NOT NULL, PRIMARY KEY(account_id,mailbox));
       CREATE TABLE IF NOT EXISTS avatars (account_id TEXT NOT NULL, identity TEXT NOT NULL, mime_type TEXT, data BLOB, updated_at INTEGER NOT NULL DEFAULT (unixepoch()), PRIMARY KEY(account_id,identity));
+      CREATE TABLE IF NOT EXISTS contacts (account_id TEXT NOT NULL, email TEXT NOT NULL, name TEXT NOT NULL, mime_type TEXT, avatar_data BLOB, updated_at INTEGER NOT NULL DEFAULT (unixepoch()), PRIMARY KEY(account_id,email));
       CREATE TABLE IF NOT EXISTS notification_state (account_id TEXT NOT NULL, message_id TEXT NOT NULL, notified_at INTEGER, dismissed_at INTEGER, PRIMARY KEY(account_id,message_id));
       CREATE TABLE IF NOT EXISTS mailbox_membership (account_id TEXT NOT NULL, mailbox TEXT NOT NULL, message_id TEXT NOT NULL, received_at TEXT NOT NULL, PRIMARY KEY(account_id,mailbox,message_id));
       CREATE INDEX IF NOT EXISTS mailbox_order_idx ON mailbox_membership(account_id,mailbox,received_at DESC);

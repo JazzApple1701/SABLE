@@ -3,7 +3,7 @@ import type { PostbirdApi } from '../shared/models'
 
 const api: PostbirdApi = {
   platform: process.platform,
-  version: '2.1.0',
+  version: '2.2.0',
   accounts: {
     status: () => ipcRenderer.invoke('accounts:status'),
     connectGoogle: (clientId, clientSecret) => ipcRenderer.invoke('accounts:connectGoogle', clientId, clientSecret),
@@ -11,7 +11,8 @@ const api: PostbirdApi = {
     importGoogleOAuthJson: () => ipcRenderer.invoke('accounts:importGoogleOAuthJson'),
     reopenGoogleLogin: () => ipcRenderer.invoke('accounts:reopenGoogleLogin'),
     cancelGoogleLogin: () => ipcRenderer.invoke('accounts:cancelGoogleLogin'),
-    disconnect: (accountId) => ipcRenderer.invoke('accounts:disconnect', accountId)
+    disconnect: (accountId) => ipcRenderer.invoke('accounts:disconnect', accountId),
+    listContacts: (accountId) => ipcRenderer.invoke('accounts:listContacts', accountId)
   },
   appearance: {
     listThemes: () => ipcRenderer.invoke('appearance:listThemes'),

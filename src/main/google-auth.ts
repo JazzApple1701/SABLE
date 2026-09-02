@@ -9,7 +9,7 @@ import { MailCache } from './mail-cache'
 const AUTHORIZE_URL = 'https://accounts.google.com/o/oauth2/v2/auth'
 const TOKEN_URL = 'https://oauth2.googleapis.com/token'
 const REVOKE_URL = 'https://oauth2.googleapis.com/revoke'
-const GMAIL_SCOPE = 'openid email profile https://www.googleapis.com/auth/gmail.modify'
+const GMAIL_SCOPE = 'openid email profile https://www.googleapis.com/auth/gmail.modify https://www.googleapis.com/auth/contacts.readonly'
 const encode = (value: Buffer): string => value.toString('base64url')
 const googleError = async (response: Response, fallback: string): Promise<Error> => {
   try {

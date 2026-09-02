@@ -37,6 +37,8 @@ const listAttachments = (part?: GmailPart): Array<{ id: string; name: string; si
 const sanitizeHeader = (value: string): string => value.replace(/[\r\n]+/g, ' ').trim()
 const buildRawMessage = (draft: ComposeDraft): string => {
   const headers = [`To: ${draft.to.map(sanitizeHeader).join(', ')}`, `Subject: ${sanitizeHeader(draft.subject)}`, 'MIME-Version: 1.0']
+  if (draft.cc?.length) headers.splice(1, 0, `Cc: ${draft.cc.map(sanitizeHeader).join(', ')}`)
+  if (draft.bcc?.length) headers.splice(draft.cc?.length ? 2 : 1, 0, `Bcc: ${draft.bcc.map(sanitizeHeader).join(', ')}`)
   if (draft.inReplyTo) headers.push(`In-Reply-To: ${sanitizeHeader(draft.inReplyTo)}`, `References: ${sanitizeHeader(draft.inReplyTo)}`)
   if (!draft.attachments?.length) return Buffer.from(`${headers.join('\r\n')}\r\nContent-Type: text/plain; charset="UTF-8"\r\n\r\n${draft.body}`).toString('base64url')
   const boundary = `sable_${Date.now().toString(36)}_${Math.random().toString(36).slice(2)}`

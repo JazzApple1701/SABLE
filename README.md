@@ -57,7 +57,7 @@ There is no SABLE server in the middle, no paid hosting requirement, and no shar
 ### Installation steps
 
 1. Open the [latest SABLE release](https://github.com/JazzApple1701/SABLE/releases/latest).
-2. Under **Assets**, download `SABLE-2.1.1-Windows-Setup.exe`.
+2. Under **Assets**, download `SABLE-2.2.0-Windows-Setup.exe`.
 3. Run the installer. It installs SABLE and adds it to the Windows Start menu.
 4. Open SABLE and follow the introductory setup.
 
@@ -78,11 +78,12 @@ Google requires an OAuth client to identify the desktop application requesting a
 3. Give it a recognizable name such as `SABLE Mail`, then select **Create**.
 4. Make sure that project remains selected for the remaining steps.
 
-### 2. Enable the Gmail API
+### 2. Enable the Gmail and People APIs
 
 1. Open the [Gmail API page](https://console.cloud.google.com/apis/library/gmail.googleapis.com).
 2. Confirm the correct project is selected.
 3. Select **Enable**.
+4. Open the [People API page](https://console.cloud.google.com/apis/library/people.googleapis.com) and select **Enable**. This supplies optional recipient names and contact photos.
 
 ### 3. Configure Google Auth Platform
 
@@ -90,7 +91,7 @@ Google requires an OAuth client to identify the desktop application requesting a
 2. Enter an app name such as `SABLE`, your support email, and your developer contact email.
 3. Under **Audience**, choose **External** for a normal personal Gmail account. An organization-managed Google Workspace project may offer **Internal** instead.
 4. While the application remains in **Testing**, open **Audience → Test users** and add every Gmail address you intend to connect.
-5. Under **Data Access**, add the Gmail permission SABLE needs: `https://www.googleapis.com/auth/gmail.modify`. SABLE also requests the standard `openid`, `email`, and `profile` identity permissions during sign-in.
+5. Under **Data Access**, add `https://www.googleapis.com/auth/gmail.modify` and the read-only contact permission `https://www.googleapis.com/auth/contacts.readonly`. SABLE also requests the standard `openid`, `email`, and `profile` identity permissions during sign-in.
 
 Keeping a personal client in Testing is fine, but Google may require reauthorization periodically. Publishing an application broadly can trigger Google's verification requirements.
 
@@ -169,6 +170,7 @@ Open **API permissions → Add a permission → Microsoft Graph → Delegated pe
 - `User.Read` — read the signed-in account's basic profile
 - `Mail.ReadWrite` — read and organize mail
 - `Mail.Send` — compose, reply, forward, and send
+- `Contacts.Read` — read saved Outlook contacts and their available photos for recipient suggestions
 
 SABLE also requests the standard `openid`, `profile`, `email`, and `offline_access` scopes so it can identify the account and refresh authorization in the background. A managed work or school tenant may require an administrator to approve some permissions.
 
@@ -204,6 +206,7 @@ Do not copy the Directory (tenant) ID, Object ID, or a secret. **SABLE does not 
 - Authorization always occurs on Google's or Microsoft's official pages.
 - OAuth tokens and the Google Desktop client secret are encrypted with Electron `safeStorage`, backed by Windows DPAPI.
 - Cached mail, settings, imported fonts, and account preferences stay in SABLE's Windows application-data directory.
+- Read-only contact names and available profile pictures are cached locally for recipient suggestions.
 - OAuth JSON files, tokens, settings, mail databases, logs, dependencies, and packaged builds are excluded from Git.
 - Disconnecting an account removes its locally stored authorization and cached data from SABLE.
 - Remote images in HTML email can reveal that a message was opened to its sender; SABLE's image behavior should be chosen with that normal email privacy tradeoff in mind.
@@ -223,6 +226,10 @@ Import the Desktop JSON again or carefully recopy both the client ID and client 
 ### Outlook sign-in reports a redirect error
 
 Confirm that **Mobile and desktop applications** contains `http://localhost` and **Allow public client flows** is enabled.
+
+### Recipient photos remain as initials
+
+Enable the Google People API or add Microsoft Graph `Contacts.Read`, then reconnect the account so the provider can display its updated consent screen. A contact without a saved provider photo continues to use initials.
 
 ### A new message is not visible yet
 

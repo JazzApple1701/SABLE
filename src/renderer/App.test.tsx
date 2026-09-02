@@ -24,6 +24,24 @@ describe('Postbird sample interface', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 
+  it('suggests contacts and creates removable To, Cc, and Bcc recipient capsules', () => {
+    render(<App />)
+    fireEvent.click(screen.getByRole('button', { name: 'New message' }))
+    const to = screen.getByRole('textbox', { name: 'To recipients' })
+    fireEvent.change(to, { target: { value: 'Maya' } })
+    fireEvent.mouseDown(screen.getByRole('option', { name: /Maya Chen.*maya@fieldnotes\.studio/i }))
+    expect(screen.getByRole('button', { name: 'Remove maya@fieldnotes.studio' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Cc · Bcc' }))
+    const cc = screen.getByRole('textbox', { name: 'Cc recipients' })
+    fireEvent.change(cc, { target: { value: 'copy@example.com' } })
+    fireEvent.keyDown(cc, { key: 'Enter' })
+    const bcc = screen.getByRole('textbox', { name: 'Bcc recipients' })
+    fireEvent.change(bcc, { target: { value: 'private@example.com' } })
+    fireEvent.keyDown(bcc, { key: 'Enter' })
+    expect(screen.getByRole('button', { name: 'Remove copy@example.com' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Remove private@example.com' })).toBeInTheDocument()
+  })
+
   it('persists the selected color theme locally', () => {
     render(<App />)
     fireEvent.click(screen.getByRole('button', { name: 'Use dark theme' }))

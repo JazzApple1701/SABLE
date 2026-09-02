@@ -4,10 +4,11 @@ export interface MailAccount { id: string; provider: Provider; name: string; ema
 export interface ConnectedAccount extends MailAccount { connected: true }
 export interface AccountStatus { googleClientIdConfigured: boolean; googleClientSecretConfigured: boolean; microsoftClientIdConfigured: boolean; accounts: ConnectedAccount[] }
 export interface ConnectGoogleResult { account: ConnectedAccount }
+export interface ContactProfile { name: string; email: string; avatarDataUrl?: string }
 export interface GmailInboxPage { messages: MailMessage[]; nextPageToken?: string }
 export interface GmailLabel { id: string; name: string; type: string }
 export interface ComposeAttachment { name: string; mimeType: string; dataBase64: string; size: number }
-export interface ComposeDraft { to: string[]; subject: string; body: string; threadId?: string; inReplyTo?: string; attachments?: ComposeAttachment[] }
+export interface ComposeDraft { to: string[]; cc?: string[]; bcc?: string[]; subject: string; body: string; threadId?: string; inReplyTo?: string; attachments?: ComposeAttachment[] }
 export interface ThemePalette { accent: string; background: string; surface: string; text: string; muted: string; border: string }
 export interface AccountTheme { accountId: string; preset: string; avatarStyle: 'circle' | 'rounded' | 'square'; light: ThemePalette; dark: ThemePalette }
 export interface ImportedFont { id: string; name: string; dataUrl: string }
@@ -23,6 +24,7 @@ export interface PostbirdApi {
     reopenGoogleLogin(): Promise<void>
     cancelGoogleLogin(): Promise<void>
     disconnect(accountId: string): Promise<void>
+    listContacts(accountId: string): Promise<ContactProfile[]>
   }
   appearance: {
     listThemes(): Promise<AccountTheme[]>

@@ -9,6 +9,7 @@ import { MailCache } from './mail-cache'
 import type { DesktopPreferences } from '../shared/models'
 import { MicrosoftAuth } from './microsoft-auth'
 import { OutlookService } from './outlook-service'
+import { ContactService } from './contact-service'
 
 type AccountApi = PostbirdApi['accounts']
 type GmailApi = PostbirdApi['gmail']
@@ -22,6 +23,7 @@ export function registerIpc(onDesktopPreferences?: (preferences: DesktopPreferen
   const microsoftAuth = new MicrosoftAuth(store, cache)
   const gmail = new GmailService(auth, cache)
   const outlook = new OutlookService(microsoftAuth, cache)
+  const contacts = new ContactService(auth, microsoftAuth, cache)
 
   ipcMain.handle('desktop:getPreferences', () => store.getDesktopPreferences())
   ipcMain.handle('desktop:savePreferences', async (_event, preferences: DesktopPreferences) => { await store.setDesktopPreferences(preferences); app.setLoginItemSettings({ openAtLogin: preferences.launchAtStartup }); onDesktopPreferences?.(preferences) })
@@ -49,6 +51,7 @@ export function registerIpc(onDesktopPreferences?: (preferences: DesktopPreferen
   ipcMain.handle('accounts:reopenGoogleLogin', (): ReturnType<AccountApi['reopenGoogleLogin']> => auth.reopenGoogleLogin())
   ipcMain.handle('accounts:cancelGoogleLogin', async (): ReturnType<AccountApi['cancelGoogleLogin']> => auth.cancelGoogleLogin())
   ipcMain.handle('accounts:disconnect', (_event, accountId: string): ReturnType<AccountApi['disconnect']> => accountId.startsWith('outlook:') ? microsoftAuth.disconnect(accountId) : auth.disconnect(accountId))
+  ipcMain.handle('accounts:listContacts', (_event, accountId: string): ReturnType<AccountApi['listContacts']> => contacts.listContacts(accountId))
   ipcMain.handle('gmail:listMailbox', (_event, accountId: string, mailbox: Parameters<GmailApi['listMailbox']>[1], query?: string, pageToken?: string): ReturnType<GmailApi['listMailbox']> => gmail.listMailbox(accountId, mailbox, query, pageToken))
   ipcMain.handle('gmail:modifyThread', (_event, accountId: string, threadId: string, action: Parameters<GmailApi['modifyThread']>[2]): ReturnType<GmailApi['modifyThread']> => gmail.modifyThread(accountId, threadId, action))
   ipcMain.handle('gmail:listLabels', (_event, accountId: string): ReturnType<GmailApi['listLabels']> => gmail.listLabels(accountId))
@@ -67,11 +70,18 @@ export function registerIpc(onDesktopPreferences?: (preferences: DesktopPreferen
   })
   ipcMain.handle('gmail:getVisualBody', (_event, accountId: string, messageId: string): ReturnType<GmailApi['getVisualBody']> => gmail.getVisualBody(accountId, messageId))
   ipcMain.handle('gmail:chooseAttachments', async (): ReturnType<GmailApi['chooseAttachments']> => {
-    const result = await dialog.showOpenDialog({ properties: ['openFile', 'multiSelections'] })
+    const result = await dialog.showOpenDialog({
+      properties: ['openFile', 'multiSelections'],
+      filters: [
+        { name: 'All files', extensions: ['*'] },
+        { name: 'Archives', extensions: ['zip', '7z', 'rar', 'tar', 'gz'] },
+        { name: 'Documents and images', extensions: ['pdf', 'png', 'jpg', 'jpeg', 'gif', 'webp', 'txt', 'csv', 'json', 'docx', 'xlsx'] }
+      ]
+    })
     if (result.canceled) return []
-    const mimeByExtension: Record<string, string> = { '.pdf': 'application/pdf', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp', '.txt': 'text/plain', '.csv': 'text/csv', '.json': 'application/json', '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }
+    const mimeByExtension: Record<string, string> = { '.zip': 'application/zip', '.7z': 'application/x-7z-compressed', '.rar': 'application/vnd.rar', '.tar': 'application/x-tar', '.gz': 'application/gzip', '.pdf': 'application/pdf', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp', '.txt': 'text/plain', '.csv': 'text/csv', '.json': 'application/json', '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }
     const attachments = await Promise.all(result.filePaths.map(async path => { const data = await readFile(path); return { name: basename(path), mimeType: mimeByExtension[extname(path).toLowerCase()] ?? 'application/octet-stream', dataBase64: data.toString('base64'), size: data.byteLength } }))
-    if (attachments.reduce((sum, file) => sum + file.size, 0) > 25 * 1024 * 1024) throw new Error('Attachments must total less than 25 MB.')
+    if (attachments.reduce((sum, file) => sum + file.size, 0) > 25 * 1024 * 1024) throw new Error('These files total more than Gmail’s 25 MB attachment limit. Choose a smaller ZIP or send a cloud-storage link instead.')
     return attachments
   })
   ipcMain.handle('gmail:saveDraft', (_event, accountId: string, draft: Parameters<GmailApi['saveDraft']>[1], draftId?: string): ReturnType<GmailApi['saveDraft']> => gmail.saveDraft(accountId, draft, draftId))

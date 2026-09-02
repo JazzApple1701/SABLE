@@ -1,6 +1,6 @@
 {
   "name": "postbird",
-  "version": "2.1.1",
+  "version": "2.2.0",
   "private": true,
   "description": "SABLE — a private, local-first desktop email client for Gmail and Outlook.",
   "main": "out/main/index.js",

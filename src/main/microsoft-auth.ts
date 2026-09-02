@@ -7,7 +7,7 @@ import { LocalStore, type GoogleTokens } from './local-store'
 import { MailCache } from './mail-cache'
 
 const AUTHORITY = 'https://login.microsoftonline.com/common/oauth2/v2.0'
-const SCOPES = 'openid profile email offline_access User.Read Mail.ReadWrite Mail.Send'
+const SCOPES = 'openid profile email offline_access User.Read Mail.ReadWrite Mail.Send Contacts.Read'
 const encode = (value: Buffer): string => value.toString('base64url')
 
 export class MicrosoftAuth {

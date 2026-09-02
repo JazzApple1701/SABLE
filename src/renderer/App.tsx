@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react'
 import { Archive, ArrowLeft, ChevronDown, ChevronRight, Download, ExternalLink, FilePenLine, FileText, Forward, Inbox, Menu, Moon, MoreHorizontal, PanelLeftClose, PanelLeftOpen, Paperclip, PenLine, Reply, ReplyAll, RotateCcw, Search, Send, Settings, ShieldAlert, Star, Sun, Tag, Trash2, X, type LucideIcon } from 'lucide-react'
-import type { AccountTheme, Attachment, AttachmentPreview, ComposeAttachment, ComposeDraft, DesktopPreferences, GmailLabel, GmailMailbox, ImportedFont, MailAccount, MailMessage, ThemePalette, ThreadMessage } from '../shared/models'
+import type { AccountTheme, Attachment, AttachmentPreview, ComposeAttachment, ComposeDraft, ContactProfile, DesktopPreferences, GmailLabel, GmailMailbox, ImportedFont, MailAccount, MailMessage, ThemePalette, ThreadMessage } from '../shared/models'
 import { accounts as sampleAccounts, messages as initialMessages } from './sample-data'
 import { buildEmailDocument } from './email-html'
 import sableIcon from './sable-icon.png'
@@ -14,7 +14,8 @@ const mailboxes: Array<{ id: Folder; name: string; icon: LucideIcon }> = [
 ]
 type FontPreset = 'editorial' | 'fashion' | 'contemporary' | 'futuristic' | 'swiss' | 'custom'
 interface FontSettings { preset: FontPreset; uiFont: string; readingFont: string; uiFontSize: number; readingFontSize: number }
-interface ComposeSeed { accountId?: string; to?: string[]; subject?: string; body?: string; threadId?: string; inReplyTo?: string }
+interface ComposeSeed { accountId?: string; to?: string[]; cc?: string[]; bcc?: string[]; subject?: string; body?: string; threadId?: string; inReplyTo?: string }
+interface RecipientSuggestion { name: string; email: string; initials: string; avatarDataUrl?: string; frequency: number }
 const fontPresets: Array<{ id: Exclude<FontPreset, 'custom'>; name: string; detail: string; ui: string; reading: string }> = [
   { id: 'editorial', name: 'Editorial luxury', detail: 'Refined and literary', ui: 'Manrope', reading: 'Georgia' },
   { id: 'fashion', name: 'High fashion', detail: 'Dramatic and elegant', ui: 'Inter Variable', reading: 'Bodoni MT' },
@@ -62,6 +63,13 @@ const matchesSearch = (message: MailMessage, query: string): boolean => {
 }
 const iconSize = 17
 const avatarRadius = (style?: AccountTheme['avatarStyle']) => style === 'square' ? '3px' : style === 'rounded' ? '9px' : '50%'
+const parseRecipient = (value: string): Omit<RecipientSuggestion, 'frequency'> | undefined => {
+  const match = value.trim().match(/^(.*?)\s*<([^>]+)>$/)
+  const email = (match?.[2] ?? value).trim().toLowerCase()
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return undefined
+  const name = (match?.[1] || email.split('@')[0]).replace(/^"|"$/g, '').trim()
+  return { name, email, initials: name.split(/\s+/).slice(0, 2).map(part => part[0]).join('').toUpperCase() || email[0].toUpperCase() }
+}
 
 export function App() {
   const [messages, setMessages] = useState(initialMessages)
@@ -108,6 +116,7 @@ export function App() {
   const [selectedMessageIds, setSelectedMessageIds] = useState<Set<string>>(new Set())
   const [labelMenuOpen, setLabelMenuOpen] = useState(false)
   const [gmailLabels, setGmailLabels] = useState<GmailLabel[]>([])
+  const [providerContacts, setProviderContacts] = useState<ContactProfile[]>([])
   const googleCancelled = useRef(false)
   const liveAccountsRef = useRef<MailAccount[]>([])
   const syncInFlight = useRef(false)
@@ -125,6 +134,30 @@ export function App() {
     const folderMatch = liveAccountsRef.current.length > 0 || folder === 'inbox' || (folder === 'starred' && message.starred)
     return accountMatch && folderMatch && matchesSearch(message, query)
   }), [accountId, folder, messages, query])
+
+  const recipientSuggestions = useMemo(() => {
+    const contacts = new Map<string, RecipientSuggestion>()
+    const remember = (value: string, preferredName?: string, avatarDataUrl?: string) => {
+      const parsed = parseRecipient(value)
+      if (!parsed) return
+      const current = contacts.get(parsed.email)
+      const name = preferredName?.trim() || current?.name || parsed.name
+      contacts.set(parsed.email, { name, email: parsed.email, initials: name.split(/\s+/).slice(0, 2).map(part => part[0]).join('').toUpperCase(), avatarDataUrl: avatarDataUrl || current?.avatarDataUrl, frequency: (current?.frequency ?? 0) + 1 })
+    }
+    mailAccounts.forEach(account => remember(account.email, account.name, account.avatarDataUrl))
+    providerContacts.forEach(contact => {
+      const parsed = parseRecipient(contact.email)
+      if (!parsed) return
+      const name = contact.name || parsed.name
+      contacts.set(parsed.email, { name, email: parsed.email, initials: name.split(/\s+/).slice(0, 2).map(part => part[0]).join('').toUpperCase(), avatarDataUrl: contact.avatarDataUrl, frequency: 20 })
+    })
+    messages.forEach(message => {
+      remember(message.sender.email, message.sender.name)
+      message.recipients.forEach(recipient => remember(recipient))
+      message.threadMessages?.forEach(item => { remember(item.sender.email, item.sender.name); item.recipients.forEach(recipient => remember(recipient)); item.cc.forEach(recipient => remember(recipient)) })
+    })
+    return [...contacts.values()].sort((a, b) => b.frequency - a.frequency || a.name.localeCompare(b.name))
+  }, [mailAccounts, messages, providerContacts])
 
   const selected = messages.find(message => message.id === selectedId && visible.some(item => item.id === message.id))
   const selectedAccount = selected ? mailAccounts.find(account => account.id === selected.accountId) : undefined
@@ -206,6 +239,15 @@ export function App() {
   useEffect(() => { if (window.postbird?.appearance) void window.postbird.appearance.listThemes().then(items => setAccountThemes(Object.fromEntries(items.map(item => [item.accountId, item])))) }, [])
 
   useEffect(() => { if (window.postbird?.desktop) void window.postbird.desktop.getPreferences().then(preferences => { desktopPreferencesRef.current = preferences; setDesktopPreferences(preferences) }) }, [])
+
+  const contactAccountKey = mailAccounts.filter(account => account.id.startsWith('gmail:') || account.id.startsWith('outlook:')).map(account => account.id).sort().join('|')
+  useEffect(() => {
+    const accounts = mailAccounts.filter(account => account.id.startsWith('gmail:') || account.id.startsWith('outlook:'))
+    if (!accounts.length || !window.postbird?.accounts?.listContacts) { setProviderContacts([]); return }
+    let cancelled = false
+    void Promise.all(accounts.map(account => window.postbird.accounts.listContacts(account.id))).then(groups => { if (!cancelled) setProviderContacts(groups.flat()) }).catch(() => undefined)
+    return () => { cancelled = true }
+  }, [contactAccountKey])
 
   useEffect(() => {
     const palette = accountId === 'all' ? generalTheme[theme] : accountThemes[accountId]?.[theme]
@@ -433,7 +475,7 @@ export function App() {
       {(attachmentPreview || previewLoading || previewError) && <AttachmentQuickView preview={attachmentPreview} loading={previewLoading} error={previewError} onClose={() => { setAttachmentPreview(null); setPreviewError(''); setPreviewTarget(null) }} onDownload={() => { if (!selected || !previewTarget) return; const { file, messageId } = previewTarget; selected.accountId.startsWith('gmail:') ? void window.postbird.gmail.downloadAttachment(selected.accountId, messageId, file.id, file.name) : void window.postbird.outlook.downloadAttachment(selected.accountId, messageId, file.id, file.name) }}/>} 
     </main>
 
-    {compose && <Compose accounts={mailAccounts} seed={composeSeed} onSend={sendMessage} onClose={() => setCompose(false)}/>} 
+    {compose && <Compose accounts={mailAccounts} suggestions={recipientSuggestions} seed={composeSeed} onSend={sendMessage} onClose={() => setCompose(false)}/>}
     {connectOpen && <ConnectAccount clientIdConfigured={googleClientIdConfigured} googleConfigured={googleConfigured} onImportJson={importGoogleOAuthJson} onConnectGoogle={connectGoogle} onClose={() => setConnectOpen(false)}/>} 
     {googleConnecting && <GoogleLoginProgress onReopen={() => window.postbird.accounts.reopenGoogleLogin()} onCancel={cancelGoogleLogin}/>} 
     {microsoftConnectOpen && <ConnectMicrosoft configured={microsoftConfigured} onConnect={connectMicrosoft} onClose={() => setMicrosoftConnectOpen(false)}/>} 
@@ -448,7 +490,8 @@ function ThreadConversation({ thread, account, privacy, onPreview, onCompose }: 
   return <div className="thread-conversation" aria-label={`${rows.length} messages in conversation`}>{rows.map(({ message, depth }) => <ThreadMessageCard key={message.id} message={message} depth={depth} account={account} privacy={privacy} onPreview={file => onPreview(message.id, file)} onReply={(mode) => {
     const everyone = [message.sender.email, ...message.recipients, ...message.cc].filter(address => !address.toLowerCase().includes(accountEmail))
     const unique = [...new Set(everyone)]
-    onCompose({ accountId: account?.id, to: mode === 'reply' ? [message.sender.email] : mode === 'replyAll' ? unique : [], subject: mode === 'forward' ? `Fwd: ${message.subject.replace(/^(re|fwd):\s*/i, '')}` : `Re: ${message.subject.replace(/^re:\s*/i, '')}`, threadId: mode === 'forward' ? undefined : thread.threadId, inReplyTo: mode === 'forward' ? undefined : message.messageId })
+    const replyAllCc = unique.filter(address => address.toLowerCase() !== message.sender.email.toLowerCase())
+    onCompose({ accountId: account?.id, to: mode === 'forward' ? [] : [message.sender.email], cc: mode === 'replyAll' ? replyAllCc : [], subject: mode === 'forward' ? `Fwd: ${message.subject.replace(/^(re|fwd):\s*/i, '')}` : `Re: ${message.subject.replace(/^re:\s*/i, '')}`, threadId: mode === 'forward' ? undefined : thread.threadId, inReplyTo: mode === 'forward' ? undefined : message.messageId })
   }}/>)}</div>
 }
 
@@ -587,7 +630,7 @@ function Onboarding({ googleConfigured, microsoftConfigured, accounts, onImportG
   const importJson = () => { setError(''); setStatus('Opening file picker…'); void onImportGoogle().then(result => setStatus(result.configured ? `${result.fileName ?? 'OAuth file'} is ready.` : 'No file selected.')).catch(reason => { setStatus(''); setError(reason instanceof Error ? reason.message : 'Could not import the OAuth file.') }) }
   return <div className="onboarding-shell" role="dialog" aria-modal="true" aria-labelledby="onboarding-title"><aside><div className="onboarding-brand"><span className="logo-mark"><img src={sableIcon} alt=""/></span><strong>SABLE</strong></div><ol>{steps.map((label, index) => <li key={label} className={index === step ? 'active' : index < step ? 'complete' : ''}><i>{index < step ? '✓' : index + 1}</i><span>{label}</span></li>)}</ol><small>Private · local-first · open-source ready</small></aside><main>
     {step === 0 && <section><p className="eyebrow">WELCOME TO SABLE</p><h1 id="onboarding-title">Your inboxes, together and under your control.</h1><p>SABLE stores mail and settings locally, uses official authorization pages, and never asks for your Gmail or Outlook password.</p><div className="onboarding-cards"><article><ShieldAlert size={18}/><strong>Private by design</strong><span>OAuth tokens use Windows secure storage.</span></article><article><Inbox size={18}/><strong>Unified locally</strong><span>No paid server or cloud database required.</span></article></div></section>}
-    {step === 1 && <section><p className="eyebrow">GMAIL API SETUP</p><h1>Create your Google desktop connection.</h1><p>This is required because an open-source desktop app cannot safely ship one private OAuth configuration for everyone.</p><div className="setup-steps"><article><b>1</b><span><strong>Create a Google Cloud project</strong><small>Use any project name, such as “My SABLE Mail”.</small></span><button onClick={() => open('https://console.cloud.google.com/projectcreate')}>Open</button></article><article><b>2</b><span><strong>Enable the Gmail API</strong><small>Select your new project before enabling it.</small></span><button onClick={() => open('https://console.cloud.google.com/apis/library/gmail.googleapis.com')}>Open</button></article><article><b>3</b><span><strong>Configure OAuth consent</strong><small>Choose External for personal Gmail and add your address as a test user.</small></span><button onClick={() => open('https://console.cloud.google.com/auth/overview')}>Open</button></article><article><b>4</b><span><strong>Create a Desktop app OAuth client</strong><small>Application type must be Desktop app—not Web application.</small></span><button onClick={() => open('https://console.cloud.google.com/auth/clients')}>Open</button></article></div></section>}
+    {step === 1 && <section><p className="eyebrow">GMAIL API SETUP</p><h1>Create your Google desktop connection.</h1><p>This is required because an open-source desktop app cannot safely ship one private OAuth configuration for everyone.</p><div className="setup-steps"><article><b>1</b><span><strong>Create a Google Cloud project</strong><small>Use any project name, such as “My SABLE Mail”.</small></span><button onClick={() => open('https://console.cloud.google.com/projectcreate')}>Open</button></article><article><b>2</b><span><strong>Enable the Gmail API</strong><small>This gives SABLE access to mail after you consent.</small></span><button onClick={() => open('https://console.cloud.google.com/apis/library/gmail.googleapis.com')}>Open</button></article><article><b>3</b><span><strong>Enable the People API</strong><small>This supplies optional contact names and photos.</small></span><button onClick={() => open('https://console.cloud.google.com/apis/library/people.googleapis.com')}>Open</button></article><article><b>4</b><span><strong>Configure OAuth consent</strong><small>Choose External for personal Gmail and add your address as a test user.</small></span><button onClick={() => open('https://console.cloud.google.com/auth/overview')}>Open</button></article><article><b>5</b><span><strong>Create a Desktop app OAuth client</strong><small>Application type must be Desktop app—not Web application.</small></span><button onClick={() => open('https://console.cloud.google.com/auth/clients')}>Open</button></article></div></section>}
     {step === 2 && <section><p className="eyebrow">OAUTH CONFIGURATION</p><h1>Choose how to add your Google credentials.</h1><p>Both methods stay local. Importing the downloaded file is quickest, while manual entry works if you already copied the client ID and client secret.</p>{googleConfigured && <p className="onboarding-success">✓ Google OAuth is already configured. You can continue without doing this again.</p>}<div className="onboarding-config-options"><button className="onboarding-import" onClick={importJson}><Download size={20}/><span><strong>Import JSON file</strong><small>Recommended · choose the client_secret_….json downloaded from Google Cloud</small></span></button><button className="onboarding-import" onClick={onManualGoogle}><PenLine size={20}/><span><strong>Enter credentials manually</strong><small>Paste your Desktop OAuth client ID and client secret into SABLE</small></span></button></div>{status && <p className="onboarding-success">✓ {status}</p>}{error && <p className="connect-error">{error}</p>}<div className="troubleshooting"><strong>Common issue</strong><p>If Google says “Access blocked,” return to OAuth consent and add the Gmail address you are signing in with as a test user.</p></div></section>}
     {step === 3 && <section><p className="eyebrow">CONNECT ACCOUNTS</p><h1>Continue on the official provider page.</h1><p>SABLE will open your normal browser, where Google or Microsoft lets you choose the account.</p><div className="onboarding-providers"><button disabled={!googleConfigured} onClick={onConnectGoogle}><b>G</b><span><strong>Connect Gmail</strong><small>{googleConfigured ? 'Google OAuth configuration ready' : 'Import the JSON or enter credentials manually first'}</small></span></button><button onClick={onConnectMicrosoft}><b>M</b><span><strong>Connect Outlook</strong><small>{microsoftConfigured ? 'Microsoft application ready' : 'Enter an Entra desktop client ID'}</small></span></button></div></section>}
     {step === 4 && <section><p className="eyebrow">SETUP COMPLETE</p><h1>{accounts.length ? 'Your mailbox is ready.' : 'SABLE is ready when you are.'}</h1><p>You can connect more accounts or reopen this guide at any time from Settings → Accounts.</p><div className="onboarding-finish-mark">S</div></section>}
@@ -610,7 +653,7 @@ function ConnectAccount({ clientIdConfigured, googleConfigured, onImportJson, on
     {!googleConfigured && <button className="oauth-json-import" onClick={() => void onImportJson().then(result => { if (result.configured) setImportedFile(result.fileName ?? 'Google OAuth JSON'); setError('') }).catch(reason => setError(reason instanceof Error ? reason.message : 'Could not import this file.'))}><Download size={16}/><span><strong>Import Google OAuth JSON</strong><small>{importedFile ? `${importedFile} imported successfully` : 'Recommended · choose the JSON downloaded from Google Cloud'}</small></span></button>}
     {!clientIdConfigured && <label><span>Google desktop OAuth client ID</span><input autoFocus value={clientId} onChange={event => setClientId(event.target.value)} placeholder="…apps.googleusercontent.com"/><small>The public identifier from your Desktop OAuth client.</small></label>}
     {!googleConfigured && <label><span>Google desktop OAuth client secret</span><input autoFocus={clientIdConfigured} type="password" value={clientSecret} onChange={event => setClientSecret(event.target.value)} placeholder="GOCSPX-…"/><small>This is not your Gmail password. It is encrypted locally with Windows DPAPI.</small></label>}
-    <div className="permission-note"><strong>Permission requested</strong><p>Read, compose, send, archive and organize Gmail messages. SABLE cannot permanently delete mail.</p></div>
+    <div className="permission-note"><strong>Permissions requested</strong><p>Read, compose and organize Gmail messages, plus read-only access to saved contacts for recipient names and photos.</p></div>
     {error && <p className="connect-error" role="alert">{error}</p>}
     <footer><button className="secondary-button" onClick={onClose}>Cancel</button><button className="connect-button" disabled={busy || (!clientIdConfigured && !clientId.trim()) || (!googleConfigured && !clientSecret.trim())} onClick={() => void connect()}>{busy ? 'Waiting for Google…' : 'Continue with Google'}</button></footer>
   </section></div>
@@ -621,7 +664,7 @@ function ConnectMicrosoft({ configured, onConnect, onClose }: { configured: bool
   const connect = async () => { setBusy(true); setError(''); try { await onConnect(configured ? undefined : clientId) } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not connect Outlook.'); setBusy(false) } }
   return <div className="modal-backdrop"><section className="connect-modal" role="dialog" aria-modal="true" aria-labelledby="microsoft-connect-title"><header><div><span className="google-badge microsoft-badge">M</span><div><h2 id="microsoft-connect-title">Connect Outlook</h2><p>SABLE opens Microsoft’s official authorization page.</p></div></div><button className="icon-button" aria-label="Close Outlook setup" onClick={onClose}><X size={17}/></button></header>
     {!configured && <label><span>Microsoft desktop application client ID</span><input autoFocus value={clientId} onChange={event => setClientId(event.target.value)} placeholder="00000000-0000-0000-0000-000000000000"/><small>Create a public desktop/mobile application in Microsoft Entra. No client secret is required.</small></label>}
-    <div className="permission-note"><strong>Permissions requested</strong><p>Read, send and organize mail, read your basic profile, and keep the connection active offline.</p></div>{error && <p className="connect-error" role="alert">{error}</p>}<footer><button className="secondary-button" onClick={onClose}>Cancel</button><button className="connect-button" disabled={busy || (!configured && !clientId.trim())} onClick={() => void connect()}>{busy ? 'Waiting for Microsoft…' : 'Continue with Microsoft'}</button></footer>
+    <div className="permission-note"><strong>Permissions requested</strong><p>Read, send and organize mail, plus read-only access to saved Outlook contacts for recipient names and photos.</p></div>{error && <p className="connect-error" role="alert">{error}</p>}<footer><button className="secondary-button" onClick={onClose}>Cancel</button><button className="connect-button" disabled={busy || (!configured && !clientId.trim())} onClick={() => void connect()}>{busy ? 'Waiting for Microsoft…' : 'Continue with Microsoft'}</button></footer>
   </section></div>
 }
 
@@ -653,8 +696,47 @@ function EmailBody({ message, privacy }: { message: MailMessage; privacy: Deskto
   </div>
 }
 
-function Compose({ accounts, seed, onSend, onClose }: { accounts: MailAccount[]; seed: ComposeSeed; onSend: (accountId: string, draft: ComposeDraft) => Promise<void>; onClose: () => void }) {
-  const [to, setTo] = useState(seed.to?.join(', ') ?? '')
+function RecipientField({ label, values, onChange, suggestions, autoFocus = false }: { label: string; values: string[]; onChange: (values: string[]) => void; suggestions: RecipientSuggestion[]; autoFocus?: boolean }) {
+  const [input, setInput] = useState('')
+  const [open, setOpen] = useState(false)
+  const [active, setActive] = useState(0)
+  const normalizedValues = values.map(value => value.toLowerCase())
+  const matches = useMemo(() => {
+    const query = input.trim().toLowerCase()
+    return suggestions.filter(contact => !normalizedValues.includes(contact.email) && (!query || contact.name.toLowerCase().includes(query) || contact.email.includes(query))).slice(0, 6)
+  }, [input, normalizedValues.join('|'), suggestions])
+  const addRecipient = (value?: string) => {
+    const parsed = parseRecipient(value ?? input)
+    if (!parsed || normalizedValues.includes(parsed.email)) return false
+    onChange([...values, parsed.email])
+    setInput(''); setOpen(false); setActive(0)
+    return true
+  }
+  const onKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
+    if (event.key === 'ArrowDown' && matches.length) { event.preventDefault(); setOpen(true); setActive(index => (index + 1) % matches.length); return }
+    if (event.key === 'ArrowUp' && matches.length) { event.preventDefault(); setOpen(true); setActive(index => (index - 1 + matches.length) % matches.length); return }
+    if (event.key === 'Escape') { setOpen(false); return }
+    if (event.key === 'Backspace' && !input && values.length) { onChange(values.slice(0, -1)); return }
+    if (event.key === 'Enter' || event.key === ',' || event.key === ';' || (event.key === 'Tab' && input)) {
+      const target = open && matches.length ? matches[active]?.email : input.replace(/[,;]$/, '')
+      if (target && addRecipient(target)) event.preventDefault()
+    }
+  }
+  return <div className="recipient-row">
+    <span className="recipient-label">{label}</span>
+    <div className="recipient-control" onClick={event => (event.currentTarget.querySelector('input') as HTMLInputElement)?.focus()}>
+      {values.map(value => { const contact = suggestions.find(item => item.email === value.toLowerCase()); return <span className="recipient-chip" key={value} title={contact?.name || value}><span>{contact?.name || value}</span>{contact?.name && <small>{value}</small>}<button type="button" aria-label={`Remove ${value}`} onClick={event => { event.stopPropagation(); onChange(values.filter(item => item !== value)) }}><X size={11}/></button></span> })}
+      <input autoFocus={autoFocus} value={input} onFocus={() => { setOpen(true); setActive(0) }} onBlur={() => { window.setTimeout(() => { if (input) addRecipient(); setOpen(false) }, 120) }} onChange={event => { setInput(event.target.value); setOpen(true); setActive(0) }} onKeyDown={onKeyDown} aria-label={`${label} recipients`} aria-autocomplete="list" aria-expanded={open && matches.length > 0} placeholder={values.length ? '' : `Add ${label.toLowerCase()} recipients`}/>
+      {open && matches.length > 0 && <div className="recipient-suggestions" role="listbox">{matches.map((contact, index) => <button type="button" role="option" aria-selected={index === active} className={index === active ? 'active' : ''} key={contact.email} onMouseDown={event => { event.preventDefault(); addRecipient(contact.email) }}><span className="suggestion-avatar">{contact.avatarDataUrl ? <img src={contact.avatarDataUrl} alt=""/> : contact.initials}</span><span><strong>{contact.name}</strong><small>{contact.email}</small></span><em>{contact.frequency > 1 ? 'Frequent' : 'Contact'}</em></button>)}</div>}
+    </div>
+  </div>
+}
+
+function Compose({ accounts, suggestions, seed, onSend, onClose }: { accounts: MailAccount[]; suggestions: RecipientSuggestion[]; seed: ComposeSeed; onSend: (accountId: string, draft: ComposeDraft) => Promise<void>; onClose: () => void }) {
+  const [to, setTo] = useState(seed.to ?? [])
+  const [cc, setCc] = useState(seed.cc ?? [])
+  const [bcc, setBcc] = useState(seed.bcc ?? [])
+  const [showCopies, setShowCopies] = useState(Boolean(seed.cc?.length || seed.bcc?.length))
   const [subject, setSubject] = useState(seed.subject ?? '')
   const [body, setBody] = useState(seed.body ?? '')
   const [accountId, setAccountId] = useState(seed.accountId ?? accounts.find(account => account.id.startsWith('gmail:'))?.id ?? accounts[0]?.id ?? '')
@@ -664,28 +746,42 @@ function Compose({ accounts, seed, onSend, onClose }: { accounts: MailAccount[];
   const [attaching, setAttaching] = useState(false)
   const [error, setError] = useState('')
   const draftId = useRef<string | undefined>(undefined)
-  const draft = { to: to.split(',').map(value => value.trim()).filter(Boolean), subject, body, threadId: seed.threadId, inReplyTo: seed.inReplyTo, attachments }
+  const draft: ComposeDraft = { to, cc, bcc, subject, body, threadId: seed.threadId, inReplyTo: seed.inReplyTo, attachments }
   useEffect(() => {
-    if ((!accountId.startsWith('gmail:') && !accountId.startsWith('outlook:')) || (!to.trim() && !subject.trim() && !body.trim() && !attachments.length)) return
+    if ((!accountId.startsWith('gmail:') && !accountId.startsWith('outlook:')) || (!to.length && !cc.length && !bcc.length && !subject.trim() && !body.trim() && !attachments.length)) return
     setDraftStatus('saving')
     const timer = window.setTimeout(() => { const request = accountId.startsWith('gmail:') ? window.postbird.gmail.saveDraft(accountId, draft, draftId.current) : window.postbird.outlook.saveDraft(accountId, draft, draftId.current); void request.then(id => { draftId.current = id; setDraftStatus('saved') }).catch(reason => { setDraftStatus('idle'); setError(reason instanceof Error ? reason.message : 'Draft could not be saved.') }) }, 1500)
     return () => window.clearTimeout(timer)
-  }, [accountId, attachments, body, subject, to])
+  }, [accountId, attachments, bcc, body, cc, subject, to])
   const send = async () => {
     setSending(true); setError('')
     try { await onSend(accountId, draft); if (draftId.current) await (accountId.startsWith('gmail:') ? window.postbird.gmail.deleteDraft(accountId, draftId.current) : window.postbird.outlook.deleteDraft(accountId, draftId.current)).catch(() => undefined); onClose() }
     catch (reason) { setError(reason instanceof Error ? reason.message : 'Message could not be sent.'); setSending(false) }
   }
-  const chooseAttachments = async () => { setAttaching(true); setError(''); try { const files = await window.postbird.gmail.chooseAttachments(); setAttachments(current => [...current, ...files]) } catch (reason) { setError(reason instanceof Error ? reason.message : 'Files could not be attached.') } finally { setAttaching(false) } }
+  const chooseAttachments = async () => {
+    setAttaching(true)
+    setError('')
+    try {
+      const files = await window.postbird.gmail.chooseAttachments()
+      const totalSize = [...attachments, ...files].reduce((sum, file) => sum + file.size, 0)
+      if (totalSize > 25 * 1024 * 1024) throw new Error('All attachments together must stay under Gmail’s 25 MB limit. Choose a smaller ZIP or send a cloud-storage link instead.')
+      setAttachments(current => [...current, ...files])
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'The file could not be attached. Check that it is readable and smaller than 25 MB.')
+    } finally {
+      setAttaching(false)
+    }
+  }
   const discard = async () => { if (draftId.current) await (accountId.startsWith('gmail:') ? window.postbird.gmail.deleteDraft(accountId, draftId.current) : window.postbird.outlook.deleteDraft(accountId, draftId.current)).catch(() => undefined); onClose() }
   return <section className="compose-modal" role="dialog" aria-modal="true" aria-labelledby="compose-title">
     <header><h2 id="compose-title">New message</h2><button className="icon-button" aria-label="Close composer" onClick={onClose}><X size={17}/></button></header>
-    <label><span>From</span><select className="from-account" value={accountId} onChange={event => setAccountId(event.target.value)}>{accounts.map(account => <option key={account.id} value={account.id}>{account.name} · {account.email}</option>)}</select></label>
-    <label><span>To</span><input autoFocus value={to} onChange={event => setTo(event.target.value)} aria-label="Recipients"/></label>
+    <label><span>From</span><select className="from-account" value={accountId} onChange={event => setAccountId(event.target.value)}>{accounts.map(account => <option key={account.id} value={account.id}>{account.name} · {account.email}</option>)}</select><button type="button" className="show-copies" onClick={() => setShowCopies(value => !value)} aria-expanded={showCopies}>Cc · Bcc</button></label>
+    <RecipientField label="To" values={to} onChange={setTo} suggestions={suggestions} autoFocus/>
+    {showCopies && <><RecipientField label="Cc" values={cc} onChange={setCc} suggestions={suggestions}/><RecipientField label="Bcc" values={bcc} onChange={setBcc} suggestions={suggestions}/></>}
     <label><span>Subject</span><input value={subject} onChange={event => setSubject(event.target.value)} aria-label="Subject"/></label>
     <textarea aria-label="Message body" placeholder="Write your message…" value={body} onChange={event => setBody(event.target.value)}/>
     {attachments.length > 0 && <div className="compose-attachments">{attachments.map((file, index) => <span key={`${file.name}-${index}`}><Paperclip size={12}/><b>{file.name}</b><small>{formatBytes(file.size)}</small><button aria-label={`Remove ${file.name}`} onClick={() => setAttachments(current => current.filter((_, itemIndex) => itemIndex !== index))}><X size={12}/></button></span>)}</div>}
     {error && <p className="compose-error" role="alert">{error}</p>}
-    <footer><button className="send-button" disabled={sending || !to.trim()} onClick={() => void send()}><Send size={15}/>{sending ? 'Sending…' : 'Send'}</button><button className="icon-button" aria-label="Attach files" disabled={attaching} onClick={() => void chooseAttachments()}><Paperclip size={17}/></button><span className="draft-status">{draftStatus === 'saving' ? 'Saving…' : draftStatus === 'saved' ? 'Saved to Gmail' : ''}</span><button className="icon-button" aria-label="Discard draft" onClick={() => void discard()}><Trash2 size={17}/></button></footer>
+    <footer><button className="send-button" disabled={sending || !to.length} onClick={() => void send()}><Send size={15}/>{sending ? 'Sending…' : 'Send'}</button><button className="icon-button" aria-label="Attach files" disabled={attaching} onClick={() => void chooseAttachments()}><Paperclip size={17}/></button><span className="draft-status">{draftStatus === 'saving' ? 'Saving…' : draftStatus === 'saved' ? 'Draft saved' : ''}</span><button className="icon-button" aria-label="Discard draft" onClick={() => void discard()}><Trash2 size={17}/></button></footer>
   </section>
 }
